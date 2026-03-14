@@ -1,54 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { WebhookPayload } from '@/types'
 
-// POST /api/webhook
-// Called by n8n to push incoming/outgoing WhatsApp messages
 export async function POST(req: NextRequest) {
   try {
-    // Verify webhook secret (set N8N_WEBHOOK_SECRET in .env)
-    
-    
-
-    const body: WebhookPayload = await req.json()
-
-    // Validate required fields
+    const body = await req.json()
     const { phone_number, message, direction } = body
-    if (!phone_number || !message || !direction) {
-      return NextResponse.json(
-        { error: 'Missing required fields: phone_number, message, direction' },
-        { status: 400 }
-      )
-    }
-
     const name = body.name || phone_number
     const timestamp = body.timestamp ? new Date(body.timestamp) : new Date()
 
-    // 1. Upsert conversation
+    if (!phone_number || !message || !direction) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    }
+
+    // Step 1: Upsert conversation
+    console.log('[webhook] Upserting conversation for:', phone_number)
     const { data: conversation, error: convError } = await supabaseAdmin
       .from('conversations')
       .upsert(
-        {
-          phone_number,
-          name,
-          last_message: message,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'phone_number', ignoreDuplicates: false }
+        { phone_number, name, last_message: message, updated_at: new Date().toISOString() },
+        { onConflict: 'phone_number' }
       )
       .select()
       .single()
 
-    if (convError) throw convError
-
-    // 2. Update unread count for incoming messages
-    if (direction === 'incoming') {
-      await supabaseAdmin.rpc('increment_unread', {
-        p_phone: phone_number,
-      })
+    if (convError) {
+      console.error('[webhook] Conversation error:', JSON.stringify(convError))
+      return NextResponse.json({ error: 'Conversation failed', details: convError }, { status: 500 })
     }
 
-    // 3. Insert message
+    console.log('[webhook] Conversation OK:', conversation.id)
+
+    // Step 2: Insert message
     const { data: msg, error: msgError } = await supabaseAdmin
       .from('messages')
       .insert({
@@ -61,24 +43,25 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (msgError) throw msgError
+    if (msgError) {
+      console.error('[webhook] Message error:', JSON.stringify(msgError))
+      return NextResponse.json({ error: 'Message failed', details: msgError }, { status: 500 })
+    }
 
-    // 4. Ensure lead record exists
+    console.log('[webhook] Message OK:', msg.id)
+
+    // Step 3: Upsert lead
     await supabaseAdmin
       .from('leads')
       .upsert(
         { conversation_id: conversation.id, phone_number, name },
-        { onConflict: 'conversation_id', ignoreDuplicates: true }
+        { onConflict: 'conversation_id' }
       )
 
-    return NextResponse.json({
-      success: true,
-      conversation_id: conversation.id,
-      message_id: msg.id,
-    })
-  } catch (err: unknown) {
-    const error = err instanceof Error ? err.message : 'Unknown error'
-    console.error('[webhook]', error)
-    return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true, conversation_id: conversation.id, message_id: msg.id })
+
+  } catch (err) {
+    console.error('[webhook] Caught exception:', JSON.stringify(err))
+    return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }
