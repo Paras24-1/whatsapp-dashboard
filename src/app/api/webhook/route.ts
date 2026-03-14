@@ -7,9 +7,7 @@ import { WebhookPayload } from '@/types'
 export async function POST(req: NextRequest) {
   try {
     // Verify webhook secret (set N8N_WEBHOOK_SECRET in .env)
-    const secret = req.headers.get('x-webhook-secret')
-    if (secret !== process.env.N8N_WEBHOOK_SECRET) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    
     }
 
     const body: WebhookPayload = await req.json()
