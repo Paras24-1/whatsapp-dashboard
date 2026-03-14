@@ -1,21 +1,15 @@
 import { createClient } from '@supabase/supabase-js'
-import { Database } from '@/types'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
-// Client-side Supabase (uses anon key, respects RLS)
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
-  realtime: {
-    params: { eventsPerSecond: 10 },
-  },
+// This is the ONLY client used in the browser
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  realtime: { params: { eventsPerSecond: 10 } },
 })
 
-// Server-side Supabase (uses service role key, bypasses RLS)
-// Only use in API routes / server components
-export const supabaseAdmin = createClient<Database>(
+// Server-only client — only import this in API routes, never in components
+export const supabaseAdmin = createClient(
   supabaseUrl,
-  supabaseServiceKey,
-  { auth: { autoRefreshToken: false, persistSession: false } }
+  process.env.SUPABASE_SERVICE_ROLE_KEY ?? supabaseAnonKey
 )
