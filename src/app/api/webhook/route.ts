@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
   try {
     // Verify webhook secret (set N8N_WEBHOOK_SECRET in .env)
     
-    }
+    
 
     const body: WebhookPayload = await req.json()
 
