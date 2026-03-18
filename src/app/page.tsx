@@ -51,9 +51,13 @@ export default function DashboardPage() {
         {/* LEFT: Conversation list — fixed width */}
         <div className="w-80 shrink-0 flex flex-col overflow-hidden">
           <ConversationList
-            selectedId={selected?.id ?? null}
-            onSelect={handleSelect}
-          />
+  selectedId={selected?.id ?? null}
+  onSelect={handleSelect}
+  onDelete={(id) => {
+    if (selected?.id === id) setSelected(null)
+  }}
+/>
+
         </div>
 
         {/* CENTER: Chat window — flexible */}
