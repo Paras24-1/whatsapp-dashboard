@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Conversation, Stage } from '@/types'
 import { useConversations } from '@/hooks'
 import { formatDistanceToNow } from 'date-fns'
-import { Search, Filter, Wifi } from 'lucide-react'
+import { Search, Filter, Wifi, Trash2, X } from 'lucide-react'
 
 const STAGES: Stage[] = ['new', 'interested', 'booking', 'confirmed', 'cancelled', 'completed']
 
@@ -20,17 +20,72 @@ const STAGE_COLORS: Record<Stage, string> = {
 interface Props {
   selectedId: string | null
   onSelect: (conv: Conversation) => void
+  onDelete?: (id: string) => void
 }
 
-export default function ConversationList({ selectedId, onSelect }: Props) {
-  const [search, setSearch] = useState('')
-  const [stage,  setStage]  = useState('')
-  const [unread, setUnread] = useState(false)
+export default function ConversationList({ selectedId, onSelect, onDelete }: Props) {
+  const [search, setSearch]           = useState('')
+  const [stage,  setStage]            = useState('')
+  const [unread, setUnread]           = useState(false)
+  const [confirmId, setConfirmId]     = useState<string | null>(null)
+  const [deleting, setDeleting]       = useState(false)
 
-  const { conversations, loading } = useConversations({ search, stage, unread })
+  const { conversations, loading, refetch } = useConversations({ search, stage, unread })
+
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation()
+    setConfirmId(id)
+  }
+
+  const confirmDelete = async () => {
+    if (!confirmId) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/conversations/${confirmId}`, { method: 'DELETE' })
+      if (res.ok) {
+        onDelete?.(confirmId)
+        refetch()
+      }
+    } finally {
+      setDeleting(false)
+      setConfirmId(null)
+    }
+  }
 
   return (
-    <aside className="flex flex-col h-full border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
+    <aside className="flex flex-col h-full bg-white dark:bg-gray-950">
+      {/* Confirm Delete Modal */}
+      {confirmId && (
+        <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl p-5 w-full max-w-xs shadow-xl">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Delete Conversation?</h3>
+              <button onClick={() => setConfirmId(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">
+              This will permanently delete the conversation and all messages. This cannot be undone.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfirmId(null)}
+                className="flex-1 px-3 py-2 text-xs rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="flex-1 px-3 py-2 text-xs rounded-xl bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 font-medium"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="px-4 pt-5 pb-3 border-b border-gray-100 dark:border-gray-800">
         <div className="flex items-center justify-between mb-3">
@@ -41,7 +96,6 @@ export default function ConversationList({ selectedId, onSelect }: Props) {
           </span>
         </div>
 
-        {/* Search */}
         <div className="relative mb-2">
           <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
           <input
@@ -53,7 +107,6 @@ export default function ConversationList({ selectedId, onSelect }: Props) {
           />
         </div>
 
-        {/* Filters */}
         <div className="flex items-center gap-2 flex-wrap">
           <Filter className="w-3.5 h-3.5 text-gray-400 shrink-0" />
           <select
@@ -94,6 +147,7 @@ export default function ConversationList({ selectedId, onSelect }: Props) {
               conversation={conv}
               isSelected={conv.id === selectedId}
               onClick={() => onSelect(conv)}
+              onDelete={(e) => handleDelete(e, conv.id)}
             />
           ))
         )}
@@ -106,28 +160,30 @@ function ConversationItem({
   conversation: conv,
   isSelected,
   onClick,
+  onDelete,
 }: {
   conversation: Conversation
   isSelected: boolean
   onClick: () => void
+  onDelete: (e: React.MouseEvent) => void
 }) {
+  const [hovered, setHovered] = useState(false)
+
   const initials = conv.name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
+    .split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
 
   const timeAgo = formatDistanceToNow(new Date(conv.updated_at), { addSuffix: true })
 
   return (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-start gap-3 px-4 py-3.5 text-left transition-colors border-b border-gray-50 dark:border-gray-900 ${
+    <div
+      className={`relative flex items-start gap-3 px-4 py-3.5 cursor-pointer transition-colors border-b border-gray-50 dark:border-gray-900 ${
         isSelected
           ? 'bg-emerald-50 dark:bg-emerald-950/30 border-l-2 border-l-emerald-500'
           : 'hover:bg-gray-50 dark:hover:bg-gray-900'
       }`}
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       {/* Avatar */}
       <div className="relative shrink-0">
@@ -135,9 +191,7 @@ function ConversationItem({
           {initials}
         </div>
         {!conv.ai_mode && (
-          <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-orange-400 border-2 border-white dark:border-gray-950 flex items-center justify-center">
-            <span className="block w-1.5 h-1.5 rounded-full bg-white" />
-          </span>
+          <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-orange-400 border-2 border-white dark:border-gray-950" />
         )}
       </div>
 
@@ -163,12 +217,23 @@ function ConversationItem({
       </div>
 
       {/* Unread badge */}
-      {conv.unread_count > 0 && (
+      {conv.unread_count > 0 && !hovered && (
         <span className="shrink-0 min-w-[20px] h-5 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center px-1">
           {conv.unread_count > 99 ? '99+' : conv.unread_count}
         </span>
       )}
-    </button>
+
+      {/* Delete button — shows on hover */}
+      {hovered && (
+        <button
+          onClick={onDelete}
+          className="shrink-0 p-1.5 rounded-lg bg-red-50 dark:bg-red-950/30 text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors"
+          title="Delete conversation"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
   )
 }
 
