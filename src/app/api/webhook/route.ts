@@ -8,8 +8,7 @@ export async function POST(req: NextRequest) {
     const name = body.name || phone_number
 let timestamp: Date
 if (body.timestamp) {
-  const ts = Number(body.timestamp)
-  timestamp = new Date(ts < 1e12 ? ts * 1000 : ts)
+const timestamp = new Date()
 } else {
   timestamp = new Date()
 }
