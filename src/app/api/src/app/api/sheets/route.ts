@@ -3,52 +3,67 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
-    const phone = searchParams.get('phone')?.replace('+', '')
+    const phone = searchParams.get('phone')?.replace('+', '').replace(/\D/g, '') || ''
 
-    const apiKey  = process.env.GOOGLE_SHEETS_API_KEY
-    const sheetId = process.env.GOOGLE_SHEET_ID
-    const gid     = process.env.GOOGLE_SHEET_GID || '0'
+    const apiKey   = process.env.GOOGLE_SHEETS_API_KEY
+    const sheetId  = process.env.GOOGLE_SHEET_ID
+    const sheetName = process.env.GOOGLE_SHEET_NAME || 'Sheet1'
 
     if (!apiKey || !sheetId) {
       return NextResponse.json({ error: 'Missing Google Sheets config' }, { status: 500 })
     }
 
-    // Fetch all rows from the sheet
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A:L?key=${apiKey}`
+    // Fetch using sheet name in range
+    const range = `${encodeURIComponent(sheetName)}!A:M`
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?key=${apiKey}`
+    
+    console.log('[sheets] Fetching:', url)
     const res = await fetch(url)
     const data = await res.json()
+
+    console.log('[sheets] Response:', JSON.stringify(data).slice(0, 300))
+
+    if (data.error) {
+      return NextResponse.json({ error: data.error.message }, { status: 500 })
+    }
 
     if (!data.values || data.values.length === 0) {
       return NextResponse.json({ error: 'No data in sheet' }, { status: 404 })
     }
 
-    // First row = headers
     const headers: string[] = data.values[0]
     const rows = data.values.slice(1)
 
-    // Find row matching phone number
+    console.log('[sheets] Headers:', headers)
+    console.log('[sheets] Total rows:', rows.length)
+
+    // Find phone column index
     const phoneIndex = headers.findIndex(
       (h: string) => h.toLowerCase().includes('phone')
     )
 
-    let matchedRow = null
+    console.log('[sheets] Phone column index:', phoneIndex)
+    console.log('[sheets] Searching for phone:', phone)
 
-    if (phone && phoneIndex !== -1) {
+    let matchedRow: string[] | null = null
+
+    if (phoneIndex !== -1) {
       matchedRow = rows.find((row: string[]) => {
         const rowPhone = (row[phoneIndex] || '').replace(/\D/g, '')
-        const searchPhone = phone.replace(/\D/g, '')
-        return rowPhone.endsWith(searchPhone) || searchPhone.endsWith(rowPhone)
-      })
+        console.log('[sheets] Comparing:', rowPhone, 'vs', phone)
+        return rowPhone === phone || 
+               rowPhone.endsWith(phone) || 
+               phone.endsWith(rowPhone)
+      }) || null
     }
 
     if (!matchedRow) {
       return NextResponse.json({ error: 'No matching lead found' }, { status: 404 })
     }
 
-    // Map row to object using headers
     const lead: Record<string, string> = {}
     headers.forEach((header: string, i: number) => {
-      lead[header] = matchedRow[i] || ''
+      lead[header] = matchedRow![i] || ''
     })
 
     return NextResponse.json(lead)
