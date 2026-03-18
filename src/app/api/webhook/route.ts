@@ -5,20 +5,15 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const { phone_number, message, direction } = body
-    const name = body.name || phone_number
-let timestamp: Date
-if (body.timestamp) {
-const timestamp: Date = new Date()
-} else {
-  timestamp = new Date()
-}
 
     if (!phone_number || !message || !direction) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
+    const name = body.name || phone_number
+    const timestamp = new Date()
+
     // Step 1: Upsert conversation
-    console.log('[webhook] Upserting conversation for:', phone_number)
     const { data: conversation, error: convError } = await supabaseAdmin
       .from('conversations')
       .upsert(
@@ -32,8 +27,6 @@ const timestamp: Date = new Date()
       console.error('[webhook] Conversation error:', JSON.stringify(convError))
       return NextResponse.json({ error: 'Conversation failed', details: convError }, { status: 500 })
     }
-
-    console.log('[webhook] Conversation OK:', conversation.id)
 
     // Step 2: Insert message
     const { data: msg, error: msgError } = await supabaseAdmin
@@ -52,8 +45,6 @@ const timestamp: Date = new Date()
       console.error('[webhook] Message error:', JSON.stringify(msgError))
       return NextResponse.json({ error: 'Message failed', details: msgError }, { status: 500 })
     }
-
-    console.log('[webhook] Message OK:', msg.id)
 
     // Step 3: Upsert lead
     await supabaseAdmin
