@@ -6,7 +6,13 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { phone_number, message, direction } = body
     const name = body.name || phone_number
-    const timestamp = body.timestamp ? new Date(body.timestamp) : new Date()
+let timestamp: Date
+if (body.timestamp) {
+  const ts = Number(body.timestamp)
+  timestamp = new Date(ts < 1e12 ? ts * 1000 : ts)
+} else {
+  timestamp = new Date()
+}
 
     if (!phone_number || !message || !direction) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
