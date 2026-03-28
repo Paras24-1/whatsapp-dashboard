@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
@@ -31,23 +33,19 @@ export async function GET(req: NextRequest) {
     const headers: string[] = data.values[0]
     const rows: string[][]  = data.values.slice(1)
 
-    const phoneIndex = headers.findIndex(
-      (h) => h.toLowerCase().includes('phone')
-    )
+    const phoneIndex = headers.findIndex((h) => h.toLowerCase().includes('phone'))
 
     const matchedRow = rows.find((row) => {
       const rowPhone = (row[phoneIndex] || '').replace(/\D/g, '').slice(-10)
       return rowPhone === phone
-    })
+    }) || null
 
     if (!matchedRow) {
       return NextResponse.json({ error: 'No matching lead found' }, { status: 404 })
     }
 
     const lead: Record<string, string> = {}
-    headers.forEach((header, i) => {
-      lead[header] = matchedRow[i] || ''
-    })
+    headers.forEach((header, i) => { lead[header] = matchedRow![i] || '' })
 
     return NextResponse.json(lead)
 
