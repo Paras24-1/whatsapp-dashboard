@@ -83,9 +83,9 @@ export default function BulkMessagingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 overflow-y-auto">
       {/* Header */}
-      <div className="bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 px-6 py-4">
+      <div className="bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 px-6 py-4 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-gray-900 dark:text-white">Bulk Messaging</h1>
