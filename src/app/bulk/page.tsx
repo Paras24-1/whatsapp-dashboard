@@ -57,7 +57,7 @@ const STATUS_ICONS = {
 
 // ── Main Page ──────────────────────────────────────────────────
 export default function BulkMessagingPage() {
-  const [tab, setTab] = useState<'new' | 'history'>('new')
+  const [tab, setTab] = useState<'new' | 'history'>('history')
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
 
   const fetchCampaigns = useCallback(async () => {
