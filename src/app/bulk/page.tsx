@@ -159,9 +159,23 @@ function NewCampaign({ onCreated }: { onCreated: () => void }) {
   const [templateBody, setTemplateBody] = useState('')
   const [scheduledAt, setScheduledAt] = useState('')
   const [sending, setSending]         = useState(false)
-  const [gsUrl, setGsUrl]             = useState('')
-  const [loadingGs, setLoadingGs]     = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
+const [gsUrl, setGsUrl]                 = useState('')
+const [loadingGs, setLoadingGs]         = useState(false)
+const [templates, setTemplates]         = useState<any[]>([])
+const [loadingTemplates, setLoadingTemplates] = useState(false)
+const [selectedTemplate, setSelectedTemplate] = useState<any>(null)
+const fileRef = useRef<HTMLInputElement>(null)
+
+// Fetch templates when step 3 is reached
+useEffect(() => {
+  if (step === 3 && templates.length === 0) {
+    setLoadingTemplates(true)
+    fetch('/api/templates')
+      .then((r) => r.json())
+      .then((data) => { if (Array.isArray(data)) setTemplates(data) })
+      .finally(() => setLoadingTemplates(false))
+  }
+}, [step])
 
   // Apply filters whenever contacts or filters change
   useEffect(() => {
