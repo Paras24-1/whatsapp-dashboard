@@ -425,57 +425,107 @@ function NewCampaign({ onCreated }: { onCreated: () => void }) {
         )}
 
         {/* Step 3: Template */}
-        {step >= 3 && (
-          <StepCard number={3} title="Configure Template" active complete={step > 3}>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-gray-500 font-medium uppercase tracking-wide">Campaign Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. March Service Reminder"
-                  value={campaignName}
-                  onChange={(e) => setCampaignName(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 text-sm rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 font-medium uppercase tracking-wide">Template Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. service_reminder (exact name from Meta)"
-                  value={templateName}
-                  onChange={(e) => setTemplateName(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 text-sm rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                <p className="text-[10px] text-gray-400 mt-1">Must match exactly with your approved Meta template name</p>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 font-medium uppercase tracking-wide">Template Preview (optional)</label>
-                <textarea
-                  placeholder="Hello {{1}}, your water purifier service is due on {{2}}. Reply YES to confirm."
-                  value={templateBody}
-                  onChange={(e) => setTemplateBody(e.target.value)}
-                  rows={3}
-                  className="w-full mt-1 px-3 py-2 text-sm rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 font-medium uppercase tracking-wide">Schedule (optional)</label>
-                <input
-                  type="datetime-local"
-                  value={scheduledAt}
-                  onChange={(e) => setScheduledAt(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 text-sm rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                <p className="text-[10px] text-gray-400 mt-1">Leave empty to send immediately</p>
-              </div>
-            </div>
-            <button onClick={() => setStep(4)} disabled={!campaignName || !templateName}
-              className="mt-4 w-full py-2 bg-emerald-500 text-white text-sm rounded-xl hover:bg-emerald-600 disabled:opacity-40 font-medium">
-              Preview & Send →
-            </button>
-          </StepCard>
+       {/* Step 3: Template */}
+{step >= 3 && (
+  <StepCard number={3} title="Configure Template" active complete={step > 3}>
+    <div className="space-y-3">
+      {/* Campaign Name */}
+      <div>
+        <label className="text-xs text-gray-500 font-medium uppercase tracking-wide">Campaign Name</label>
+        <input
+          type="text"
+          placeholder="e.g. March Service Reminder"
+          value={campaignName}
+          onChange={(e) => setCampaignName(e.target.value)}
+          className="w-full mt-1 px-3 py-2 text-sm rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        />
+      </div>
+
+      {/* Template Dropdown */}
+      <div>
+        <label className="text-xs text-gray-500 font-medium uppercase tracking-wide">
+          Select Template
+        </label>
+        {loadingTemplates ? (
+          <div className="mt-1 px-3 py-2 text-sm text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center gap-2">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Loading templates...
+          </div>
+        ) : (
+          <select
+            value={templateName}
+            onChange={(e) => {
+              const selected = templates.find((t) => t.name === e.target.value)
+              setTemplateName(e.target.value)
+              setTemplateBody(selected?.body || '')
+              setSelectedTemplate(selected || null)
+            }}
+            className="w-full mt-1 px-3 py-2 text-sm rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          >
+            <option value="">Select an approved template...</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.name}>
+                {t.name} ({t.category})
+              </option>
+            ))}
+          </select>
         )}
+      </div>
+
+      {/* Template Preview */}
+      {selectedTemplate && (
+        <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800">
+          <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">Template Preview</p>
+          <div className="bg-emerald-500 text-white text-xs p-3 rounded-xl rounded-br-sm max-w-xs leading-relaxed whitespace-pre-wrap">
+            {selectedTemplate.body.replace('{{1}}', filteredContacts[0]?.name || 'Customer')}
+          </div>
+          <div className="flex gap-2 mt-2">
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{selectedTemplate.category}</span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">{selectedTemplate.language}</span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{selectedTemplate.variables.length} variable(s)</span>
+          </div>
+          {selectedTemplate.variables.length > 0 && (
+            <div className="mt-2">
+              <p className="text-[10px] text-gray-400 mb-1">Variable mapping:</p>
+              <p className="text-[10px] text-gray-500">
+                <span className="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">{'{{1}}'}</span> → Contact Name column
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Schedule */}
+      <div>
+        <label className="text-xs text-gray-500 font-medium uppercase tracking-wide">Schedule (optional)</label>
+        <div className="flex gap-2">
+          <input
+            type="datetime-local"
+            value={scheduledAt}
+            onChange={(e) => setScheduledAt(e.target.value)}
+            className="flex-1 mt-1 px-3 py-2 text-sm rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+          {scheduledAt && (
+            <button
+              onClick={() => setScheduledAt('')}
+              className="mt-1 px-3 py-2 bg-red-100 text-red-600 text-sm rounded-xl hover:bg-red-200"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        <p className="text-[10px] text-gray-400 mt-1">Leave empty to send immediately</p>
+      </div>
+    </div>
+
+    <button
+      onClick={() => setStep(4)}
+      disabled={!campaignName || !templateName}
+      className="mt-4 w-full py-2 bg-emerald-500 text-white text-sm rounded-xl hover:bg-emerald-600 disabled:opacity-40 font-medium"
+    >
+      Preview & Send →
+    </button>
+  </StepCard>
+)}
 
         {/* Step 4: Review & Send */}
         {step >= 4 && (
