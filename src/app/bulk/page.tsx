@@ -6,12 +6,10 @@ import * as XLSX from 'xlsx'
 import {
   Upload, Send, Filter, Clock, BarChart2,
   CheckCircle, XCircle, AlertCircle, RefreshCw,
-  ChevronDown, ChevronUp, Download, Play, Pause,
-  Users, MessageSquare, TrendingUp, X, Plus, Eye
+  Download, Pause, MessageSquare, TrendingUp, X, Plus, Eye
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
-// ── Types ──────────────────────────────────────────────────────
 interface Contact {
   phone: string
   name: string
@@ -34,9 +32,21 @@ interface Campaign {
   created_at: string
 }
 
-interface Filter {
+interface FilterItem {
   column: string
   value: string
+}
+
+interface Template {
+  id: string
+  name: string
+  language: string
+  status: string
+  category: string
+  body: string
+  header: string
+  footer: string
+  variables: string[]
 }
 
 const STATUS_COLORS = {
@@ -55,9 +65,24 @@ const STATUS_ICONS = {
   failed:    <XCircle className="w-3.5 h-3.5" />,
 }
 
+// ── Helpers ────────────────────────────────────────────────────
+function extractVariables(body: string): string[] {
+  const matches = body.match(/{{\d+}}/g) || []
+  return [...new Set(matches)].sort()
+}
+
+function buildPreview(body: string, mapping: Record<string, string>, sampleContact: Contact): string {
+  let preview = body
+  Object.entries(mapping).forEach(([variable, column]) => {
+    const value = column ? (sampleContact[column] || column) : `[${variable}]`
+    preview = preview.replace(new RegExp(variable.replace(/[{}]/g, '\\$&'), 'g'), value)
+  })
+  return preview
+}
+
 // ── Main Page ──────────────────────────────────────────────────
 export default function BulkMessagingPage() {
-  const [tab, setTab] = useState<'new' | 'history'>('history')
+  const [tab, setTab]             = useState<'new' | 'history'>('history')
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
 
   const fetchCampaigns = useCallback(async () => {
@@ -67,7 +92,6 @@ export default function BulkMessagingPage() {
 
   useEffect(() => {
     fetchCampaigns()
-    // Realtime subscription
     const channel = supabase
       .channel('campaigns-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'campaigns' }, fetchCampaigns)
@@ -84,7 +108,6 @@ export default function BulkMessagingPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 overflow-y-auto">
-      {/* Header */}
       <div className="bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 px-6 py-4 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div>
@@ -92,52 +115,32 @@ export default function BulkMessagingPage() {
             <p className="text-sm text-gray-500 mt-0.5">Send WhatsApp template messages to multiple contacts</p>
           </div>
           <div className="flex gap-2">
-            <button
-              onClick={() => setTab('new')}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-                tab === 'new'
-                  ? 'bg-emerald-500 text-white'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-              }`}
-            >
-              <Plus className="w-4 h-4 inline mr-1.5" />
-              New Campaign
+            <button onClick={() => setTab('new')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${tab === 'new' ? 'bg-emerald-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`}>
+              <Plus className="w-4 h-4 inline mr-1.5" />New Campaign
             </button>
-            <button
-              onClick={() => setTab('history')}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-                tab === 'history'
-                  ? 'bg-emerald-500 text-white'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-              }`}
-            >
-              <BarChart2 className="w-4 h-4 inline mr-1.5" />
-              Campaign History
+            <button onClick={() => setTab('history')} className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${tab === 'history' ? 'bg-emerald-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`}>
+              <BarChart2 className="w-4 h-4 inline mr-1.5" />Campaign History
             </button>
           </div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-6">
-        {/* Stats Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <StatCard icon={<MessageSquare className="w-5 h-5 text-blue-500" />} label="Total Campaigns" value={stats.total} />
-          <StatCard icon={<RefreshCw className="w-5 h-5 text-amber-500" />} label="Active" value={stats.sending} />
-          <StatCard icon={<CheckCircle className="w-5 h-5 text-green-500" />} label="Completed" value={stats.completed} />
-          <StatCard icon={<TrendingUp className="w-5 h-5 text-emerald-500" />} label="Total Delivered" value={stats.delivered} />
+          <StatCard icon={<MessageSquare className="w-5 h-5 text-blue-500" />}  label="Total Campaigns" value={stats.total} />
+          <StatCard icon={<RefreshCw    className="w-5 h-5 text-amber-500" />}  label="Active"          value={stats.sending} />
+          <StatCard icon={<CheckCircle  className="w-5 h-5 text-green-500" />}  label="Completed"       value={stats.completed} />
+          <StatCard icon={<TrendingUp   className="w-5 h-5 text-emerald-500" />} label="Total Delivered" value={stats.delivered} />
         </div>
-
-        {tab === 'new' ? (
-          <NewCampaign onCreated={() => { fetchCampaigns(); setTab('history') }} />
-        ) : (
-          <CampaignHistory campaigns={campaigns} onRefresh={fetchCampaigns} />
-        )}
+        {tab === 'new'
+          ? <NewCampaign onCreated={() => { fetchCampaigns(); setTab('history') }} />
+          : <CampaignHistory campaigns={campaigns} onRefresh={fetchCampaigns} />
+        }
       </div>
     </div>
   )
 }
 
-// ── Stat Card ──────────────────────────────────────────────────
 function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
   return (
     <div className="bg-white dark:bg-gray-950 rounded-2xl p-4 border border-gray-200 dark:border-gray-800">
@@ -149,35 +152,55 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
 
 // ── New Campaign ───────────────────────────────────────────────
 function NewCampaign({ onCreated }: { onCreated: () => void }) {
-  const [step, setStep]               = useState(1)
-  const [allContacts, setAllContacts] = useState<Contact[]>([])
-  const [columns, setColumns]         = useState<string[]>([])
-  const [filters, setFilters]         = useState<Filter[]>([])
-  const [filteredContacts, setFiltered] = useState<Contact[]>([])
-  const [campaignName, setCampaignName] = useState('')
-  const [templateName, setTemplateName] = useState('')
-  const [templateBody, setTemplateBody] = useState('')
-  const [scheduledAt, setScheduledAt] = useState('')
-  const [sending, setSending]         = useState(false)
-const [gsUrl, setGsUrl]                 = useState('')
-const [loadingGs, setLoadingGs]         = useState(false)
-const [templates, setTemplates]         = useState<any[]>([])
-const [loadingTemplates, setLoadingTemplates] = useState(false)
-const [selectedTemplate, setSelectedTemplate] = useState<any>(null)
-const fileRef = useRef<HTMLInputElement>(null)
+  const [step, setStep]                         = useState(1)
+  const [allContacts, setAllContacts]           = useState<Contact[]>([])
+  const [columns, setColumns]                   = useState<string[]>([])
+  const [filters, setFilters]                   = useState<FilterItem[]>([])
+  const [filteredContacts, setFiltered]         = useState<Contact[]>([])
+  const [campaignName, setCampaignName]         = useState('')
+  const [templateName, setTemplateName]         = useState('')
+  const [templateBody, setTemplateBody]         = useState('')
+  const [scheduledAt, setScheduledAt]           = useState('')
+  const [sending, setSending]                   = useState(false)
+  const [gsUrl, setGsUrl]                       = useState('')
+  const [loadingGs, setLoadingGs]               = useState(false)
+  const [templates, setTemplates]               = useState<Template[]>([])
+  const [loadingTemplates, setLoadingTemplates] = useState(false)
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
+  // variableMapping: { '{{1}}': 'Name', '{{2}}': 'City', ... }
+  const [variableMapping, setVariableMapping]   = useState<Record<string, string>>({})
+  const fileRef = useRef<HTMLInputElement>(null)
 
-// Fetch templates when step 3 is reached
-useEffect(() => {
-  if (step === 3 && templates.length === 0) {
-    setLoadingTemplates(true)
-    fetch('/api/templates')
-      .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data)) setTemplates(data) })
-      .finally(() => setLoadingTemplates(false))
-  }
-}, [step])
+  // Fetch templates on step 3
+  useEffect(() => {
+    if (step === 3 && templates.length === 0) {
+      setLoadingTemplates(true)
+      fetch('/api/templates')
+        .then((r) => r.json())
+        .then((data) => { if (Array.isArray(data)) setTemplates(data) })
+        .catch(() => {})
+        .finally(() => setLoadingTemplates(false))
+    }
+  }, [step, templates.length])
 
-  // Apply filters whenever contacts or filters change
+  // When template is selected, auto-initialize variable mapping
+  useEffect(() => {
+    if (!selectedTemplate) return
+    const vars = extractVariables(selectedTemplate.body)
+    const defaultMapping: Record<string, string> = {}
+    vars.forEach((v, i) => {
+      // Auto-map {{1}} to 'name' column if it exists, else first column
+      if (i === 0) {
+        const nameCol = columns.find((c) => c.toLowerCase() === 'name' || c.toLowerCase().includes('name'))
+        defaultMapping[v] = nameCol || columns[0] || ''
+      } else {
+        defaultMapping[v] = ''
+      }
+    })
+    setVariableMapping(defaultMapping)
+  }, [selectedTemplate, columns])
+
+  // Apply filters
   useEffect(() => {
     if (!allContacts.length) { setFiltered([]); return }
     let result = [...allContacts]
@@ -194,18 +217,12 @@ useEffect(() => {
   const parseFile = (file: File) => {
     const ext = file.name.split('.').pop()?.toLowerCase()
     if (ext === 'csv') {
-      Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        complete: (results) => loadContacts(results.data as Contact[]),
-      })
+      Papa.parse(file, { header: true, skipEmptyLines: true, complete: (r) => loadContacts(r.data as Contact[]) })
     } else if (ext === 'xlsx' || ext === 'xls') {
       const reader = new FileReader()
       reader.onload = (e) => {
         const wb = XLSX.read(e.target?.result, { type: 'binary' })
-        const ws = wb.Sheets[wb.SheetNames[0]]
-        const data = XLSX.utils.sheet_to_json(ws) as Contact[]
-        loadContacts(data)
+        loadContacts(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]) as Contact[])
       }
       reader.readAsBinaryString(file)
     }
@@ -215,15 +232,10 @@ useEffect(() => {
     if (!data.length) return
     const cols = Object.keys(data[0])
     setColumns(cols)
-    // Normalize phone column
     const normalized = data.map((row) => {
       const phoneKey = cols.find((c) => c.toLowerCase().includes('phone')) || cols[0]
       const nameKey  = cols.find((c) => c.toLowerCase().includes('name'))  || cols[1]
-      return {
-        ...row,
-        phone: String(row[phoneKey] || '').replace(/\D/g, ''),
-        name:  String(row[nameKey]  || ''),
-      }
+      return { ...row, phone: String(row[phoneKey] || '').replace(/\D/g, ''), name: String(row[nameKey] || '') }
     }).filter((c) => c.phone.length >= 10)
     setAllContacts(normalized)
     setStep(2)
@@ -235,38 +247,23 @@ useEffect(() => {
     try {
       const match = gsUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
       if (!match) { alert('Invalid Google Sheets URL'); return }
-      const sheetId = match[1]
-      const res = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A:Z?key=${process.env.NEXT_PUBLIC_GOOGLE_SHEETS_API_KEY}`
-      )
+      const res  = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${match[1]}/values/A:Z?key=${process.env.NEXT_PUBLIC_GOOGLE_SHEETS_API_KEY}`)
       const data = await res.json()
       if (!data.values?.length) { alert('No data found'); return }
       const headers = data.values[0]
-      const rows = data.values.slice(1).map((row: string[]) => {
+      loadContacts(data.values.slice(1).map((row: string[]) => {
         const obj: Contact = { phone: '', name: '' }
         headers.forEach((h: string, i: number) => { obj[h] = row[i] || '' })
         return obj
-      })
-      loadContacts(rows)
-    } catch { alert('Failed to import from Google Sheets') }
+      }))
+    } catch { alert('Failed to import') }
     finally { setLoadingGs(false) }
   }
 
-  const addFilter = () => setFilters([...filters, { column: '', value: '' }])
+  const addFilter    = () => setFilters([...filters, { column: '', value: '' }])
   const removeFilter = (i: number) => setFilters(filters.filter((_, idx) => idx !== i))
-  const updateFilter = (i: number, key: keyof Filter, val: string) => {
+  const updateFilter = (i: number, key: keyof FilterItem, val: string) =>
     setFilters(filters.map((f, idx) => idx === i ? { ...f, [key]: val } : f))
-  }
-
-  const exportFailed = () => {
-    const failed = filteredContacts.filter((c) => !c.phone)
-    if (!failed.length) return
-    const csv = Papa.unparse(failed)
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href = url; a.download = 'invalid_contacts.csv'; a.click()
-  }
 
   const handleSend = async () => {
     if (!campaignName || !templateName || !filteredContacts.length) return
@@ -276,15 +273,19 @@ useEffect(() => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: campaignName,
+          name:          campaignName,
           template_name: templateName,
           template_body: templateBody,
-          scheduled_at: scheduledAt || null,
-          contacts: filteredContacts.map((c) => ({
-            phone: c.phone,
-            name:  c.name,
-            variables: c,
-          })),
+          scheduled_at:  scheduledAt || null,
+          variable_mapping: variableMapping,
+          contacts: filteredContacts.map((c) => {
+            // Build resolved variables for this contact
+            const resolvedVars: Record<string, string> = {}
+            Object.entries(variableMapping).forEach(([variable, column]) => {
+              resolvedVars[variable] = column ? (c[column] || '') : ''
+            })
+            return { phone: c.phone, name: c.name, variables: resolvedVars, raw: c }
+          }),
         }),
       })
       if (res.ok) { onCreated() }
@@ -292,19 +293,18 @@ useEffect(() => {
     } finally { setSending(false) }
   }
 
+  const templateVariables = selectedTemplate ? extractVariables(selectedTemplate.body) : []
+  const sampleContact     = filteredContacts[0] || {} as Contact
+  const previewText       = selectedTemplate
+    ? buildPreview(selectedTemplate.body, variableMapping, sampleContact)
+    : ''
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Left: Steps */}
       <div className="lg:col-span-2 space-y-4">
 
         {/* Step 1: Upload */}
-        <StepCard
-          number={1}
-          title="Upload Contacts"
-          active={step >= 1}
-          complete={step > 1}
-        >
-          {/* File Upload */}
+        <StepCard number={1} title="Upload Contacts" active={step >= 1} complete={step > 1}>
           <div
             onClick={() => fileRef.current?.click()}
             className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-2xl p-8 text-center cursor-pointer hover:border-emerald-400 transition-colors"
@@ -312,13 +312,8 @@ useEffect(() => {
             <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
             <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Drop CSV or Excel file here</p>
             <p className="text-xs text-gray-400 mt-1">Supports .csv, .xlsx, .xls</p>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,.xlsx,.xls"
-              className="hidden"
-              onChange={(e) => e.target.files?.[0] && parseFile(e.target.files[0])}
-            />
+            <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
+              onChange={(e) => e.target.files?.[0] && parseFile(e.target.files[0])} />
           </div>
 
           <div className="flex items-center gap-3 my-3">
@@ -327,32 +322,20 @@ useEffect(() => {
             <div className="flex-1 h-px bg-gray-200 dark:bg-gray-800" />
           </div>
 
-          {/* Google Sheets Import */}
           <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="Paste Google Sheets URL..."
-              value={gsUrl}
+            <input type="text" placeholder="Paste Google Sheets URL..." value={gsUrl}
               onChange={(e) => setGsUrl(e.target.value)}
-              className="flex-1 px-3 py-2 text-sm rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-            <button
-              onClick={importFromGoogleSheets}
-              disabled={!gsUrl || loadingGs}
-              className="px-4 py-2 bg-emerald-500 text-white text-sm rounded-xl hover:bg-emerald-600 disabled:opacity-50 font-medium"
-            >
+              className="flex-1 px-3 py-2 text-sm rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            <button onClick={importFromGoogleSheets} disabled={!gsUrl || loadingGs}
+              className="px-4 py-2 bg-emerald-500 text-white text-sm rounded-xl hover:bg-emerald-600 disabled:opacity-50 font-medium">
               {loadingGs ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Import'}
             </button>
           </div>
 
           {allContacts.length > 0 && (
             <div className="mt-3 p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-xl flex items-center justify-between">
-              <span className="text-sm text-emerald-700 dark:text-emerald-400 font-medium">
-                ✓ {allContacts.length} contacts loaded
-              </span>
-              <button onClick={() => { setAllContacts([]); setStep(1) }} className="text-xs text-gray-400 hover:text-red-500">
-                Clear
-              </button>
+              <span className="text-sm text-emerald-700 dark:text-emerald-400 font-medium">✓ {allContacts.length} contacts loaded</span>
+              <button onClick={() => { setAllContacts([]); setStep(1) }} className="text-xs text-gray-400 hover:text-red-500">Clear</button>
             </div>
           )}
         </StepCard>
@@ -364,38 +347,27 @@ useEffect(() => {
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 <span className="font-semibold text-gray-900 dark:text-white">{filteredContacts.length}</span> of {allContacts.length} contacts selected
               </p>
-              <button
-                onClick={addFilter}
-                className="flex items-center gap-1 text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 px-3 py-1.5 rounded-lg hover:bg-emerald-50 hover:text-emerald-600"
-              >
+              <button onClick={addFilter} className="flex items-center gap-1 text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 px-3 py-1.5 rounded-lg hover:bg-emerald-50 hover:text-emerald-600">
                 <Filter className="w-3 h-3" /> Add Filter
               </button>
             </div>
 
             {filters.map((f, i) => (
               <div key={i} className="flex gap-2 mb-2">
-                <select
-                  value={f.column}
-                  onChange={(e) => updateFilter(i, 'column', e.target.value)}
-                  className="flex-1 px-2 py-1.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none"
-                >
+                <select value={f.column} onChange={(e) => updateFilter(i, 'column', e.target.value)}
+                  className="flex-1 px-2 py-1.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none">
                   <option value="">Select column</option>
                   {columns.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
-                <input
-                  type="text"
-                  placeholder="Filter value..."
-                  value={f.value}
+                <input type="text" placeholder="Filter value..." value={f.value}
                   onChange={(e) => updateFilter(i, 'value', e.target.value)}
-                  className="flex-1 px-2 py-1.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none"
-                />
+                  className="flex-1 px-2 py-1.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none" />
                 <button onClick={() => removeFilter(i)} className="text-gray-400 hover:text-red-500 px-1">
                   <X className="w-4 h-4" />
                 </button>
               </div>
             ))}
 
-            {/* Contact Preview Table */}
             <div className="mt-3 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
               <table className="w-full text-xs">
                 <thead className="bg-gray-50 dark:bg-gray-900">
@@ -409,7 +381,7 @@ useEffect(() => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredContacts.slice(0, 8).map((c, i) => (
+                  {filteredContacts.slice(0, 6).map((c, i) => (
                     <tr key={i} className="border-t border-gray-100 dark:border-gray-800">
                       <td className="px-3 py-2 text-gray-400">{i + 1}</td>
                       <td className="px-3 py-2 font-mono text-gray-700 dark:text-gray-300">{c.phone}</td>
@@ -421,139 +393,169 @@ useEffect(() => {
                   ))}
                 </tbody>
               </table>
-              {filteredContacts.length > 8 && (
+              {filteredContacts.length > 6 && (
                 <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900 text-xs text-gray-400 border-t border-gray-100 dark:border-gray-800">
-                  +{filteredContacts.length - 8} more contacts
+                  +{filteredContacts.length - 6} more contacts
                 </div>
               )}
             </div>
 
-            <button
-              onClick={() => setStep(3)}
-              disabled={!filteredContacts.length}
-              className="mt-3 w-full py-2 bg-emerald-500 text-white text-sm rounded-xl hover:bg-emerald-600 disabled:opacity-40 font-medium"
-            >
+            <button onClick={() => setStep(3)} disabled={!filteredContacts.length}
+              className="mt-3 w-full py-2 bg-emerald-500 text-white text-sm rounded-xl hover:bg-emerald-600 disabled:opacity-40 font-medium">
               Continue with {filteredContacts.length} contacts →
             </button>
           </StepCard>
         )}
 
-        {/* Step 3: Template */}
-       {/* Step 3: Template */}
-{step >= 3 && (
-  <StepCard number={3} title="Configure Template" active complete={step > 3}>
-    <div className="space-y-3">
-      {/* Campaign Name */}
-      <div>
-        <label className="text-xs text-gray-500 font-medium uppercase tracking-wide">Campaign Name</label>
-        <input
-          type="text"
-          placeholder="e.g. March Service Reminder"
-          value={campaignName}
-          onChange={(e) => setCampaignName(e.target.value)}
-          className="w-full mt-1 px-3 py-2 text-sm rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-        />
-      </div>
+        {/* Step 3: Template + Variable Mapping */}
+        {step >= 3 && (
+          <StepCard number={3} title="Configure Template" active complete={step > 3}>
+            <div className="space-y-4">
 
-      {/* Template Dropdown */}
-      <div>
-        <label className="text-xs text-gray-500 font-medium uppercase tracking-wide">
-          Select Template
-        </label>
-        {loadingTemplates ? (
-          <div className="mt-1 px-3 py-2 text-sm text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center gap-2">
-            <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Loading templates...
-          </div>
-        ) : (
-          <select
-            value={templateName}
-            onChange={(e) => {
-              const selected = templates.find((t) => t.name === e.target.value)
-              setTemplateName(e.target.value)
-              setTemplateBody(selected?.body || '')
-              setSelectedTemplate(selected || null)
-            }}
-            className="w-full mt-1 px-3 py-2 text-sm rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          >
-            <option value="">Select an approved template...</option>
-            {templates.map((t) => (
-              <option key={t.id} value={t.name}>
-                {t.name} ({t.category})
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
+              {/* Campaign Name */}
+              <div>
+                <label className="text-xs text-gray-500 font-medium uppercase tracking-wide">Campaign Name</label>
+                <input type="text" placeholder="e.g. March Service Reminder" value={campaignName}
+                  onChange={(e) => setCampaignName(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 text-sm rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+              </div>
 
-      {/* Template Preview */}
-      {selectedTemplate && (
-        <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800">
-          <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">Template Preview</p>
-          <div className="bg-emerald-500 text-white text-xs p-3 rounded-xl rounded-br-sm max-w-xs leading-relaxed whitespace-pre-wrap">
-            {selectedTemplate.body.replace('{{1}}', filteredContacts[0]?.name || 'Customer')}
-          </div>
-          <div className="flex gap-2 mt-2">
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{selectedTemplate.category}</span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">{selectedTemplate.language}</span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{selectedTemplate.variables.length} variable(s)</span>
-          </div>
-          {selectedTemplate.variables.length > 0 && (
-            <div className="mt-2">
-              <p className="text-[10px] text-gray-400 mb-1">Variable mapping:</p>
-              <p className="text-[10px] text-gray-500">
-                <span className="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">{'{{1}}'}</span> → Contact Name column
-              </p>
+              {/* Template Dropdown */}
+              <div>
+                <label className="text-xs text-gray-500 font-medium uppercase tracking-wide">Select Template</label>
+                {loadingTemplates ? (
+                  <div className="mt-1 px-3 py-2 text-sm text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center gap-2">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Loading templates...
+                  </div>
+                ) : (
+                  <select value={templateName}
+                    onChange={(e) => {
+                      const t = templates.find((t) => t.name === e.target.value)
+                      setTemplateName(e.target.value)
+                      setTemplateBody(t?.body || '')
+                      setSelectedTemplate(t || null)
+                    }}
+                    className="w-full mt-1 px-3 py-2 text-sm rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    <option value="">Select an approved template...</option>
+                    {templates.map((t) => (
+                      <option key={t.id} value={t.name}>{t.name} ({t.category})</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* ── Variable Mapping ── */}
+              {selectedTemplate && templateVariables.length > 0 && (
+                <div className="p-4 bg-blue-50 dark:bg-blue-950/20 rounded-xl border border-blue-200 dark:border-blue-900">
+                  <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 mb-3">
+                    Map Template Variables to Your Columns
+                  </p>
+                  <div className="space-y-2">
+                    {templateVariables.map((variable) => (
+                      <div key={variable} className="flex items-center gap-3">
+                        {/* Variable pill */}
+                        <span className="shrink-0 font-mono text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-1 rounded-lg min-w-[48px] text-center">
+                          {variable}
+                        </span>
+                        <span className="text-gray-400 text-xs">→</span>
+                        {/* Column dropdown */}
+                        <select
+                          value={variableMapping[variable] || ''}
+                          onChange={(e) => setVariableMapping((prev) => ({ ...prev, [variable]: e.target.value }))}
+                          className="flex-1 px-2 py-1.5 text-xs rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-blue-200 dark:border-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        >
+                          <option value="">Select column...</option>
+                          {columns.map((col) => (
+                            <option key={col} value={col}>{col}</option>
+                          ))}
+                        </select>
+                        {/* Sample value preview */}
+                        {variableMapping[variable] && sampleContact[variableMapping[variable]] && (
+                          <span className="shrink-0 text-[10px] text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-lg max-w-[80px] truncate">
+                            e.g. {sampleContact[variableMapping[variable]]}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Live preview */}
+                  <div className="mt-4">
+                    <p className="text-[10px] text-blue-600 dark:text-blue-400 uppercase tracking-wide mb-2 font-medium">Live Preview (first contact)</p>
+                    <div className="bg-emerald-500 text-white text-xs p-3 rounded-xl rounded-br-sm max-w-xs leading-relaxed whitespace-pre-wrap">
+                      {previewText || selectedTemplate.body}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 mt-3 flex-wrap">
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{selectedTemplate.category}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">{selectedTemplate.language}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{templateVariables.length} variable(s)</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Template with no variables */}
+              {selectedTemplate && templateVariables.length === 0 && (
+                <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800">
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">Template Preview</p>
+                  <div className="bg-emerald-500 text-white text-xs p-3 rounded-xl rounded-br-sm max-w-xs leading-relaxed whitespace-pre-wrap">
+                    {selectedTemplate.body}
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-2">This template has no variables — same message sent to everyone</p>
+                </div>
+              )}
+
+              {/* Schedule */}
+              <div>
+                <label className="text-xs text-gray-500 font-medium uppercase tracking-wide">Schedule (optional)</label>
+                <div className="flex gap-2">
+                  <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)}
+                    className="flex-1 mt-1 px-3 py-2 text-sm rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  {scheduledAt && (
+                    <button onClick={() => setScheduledAt('')} className="mt-1 px-3 py-2 bg-red-100 text-red-600 text-sm rounded-xl hover:bg-red-200">Clear</button>
+                  )}
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1">Leave empty to send immediately</p>
+              </div>
             </div>
-          )}
-        </div>
-      )}
 
-      {/* Schedule */}
-      <div>
-        <label className="text-xs text-gray-500 font-medium uppercase tracking-wide">Schedule (optional)</label>
-        <div className="flex gap-2">
-          <input
-            type="datetime-local"
-            value={scheduledAt}
-            onChange={(e) => setScheduledAt(e.target.value)}
-            className="flex-1 mt-1 px-3 py-2 text-sm rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-          {scheduledAt && (
-            <button
-              onClick={() => setScheduledAt('')}
-              className="mt-1 px-3 py-2 bg-red-100 text-red-600 text-sm rounded-xl hover:bg-red-200"
-            >
-              Clear
+            <button onClick={() => setStep(4)} disabled={!campaignName || !templateName}
+              className="mt-4 w-full py-2 bg-emerald-500 text-white text-sm rounded-xl hover:bg-emerald-600 disabled:opacity-40 font-medium">
+              Preview & Send →
             </button>
-          )}
-        </div>
-        <p className="text-[10px] text-gray-400 mt-1">Leave empty to send immediately</p>
-      </div>
-    </div>
-
-    <button
-      onClick={() => setStep(4)}
-      disabled={!campaignName || !templateName}
-      className="mt-4 w-full py-2 bg-emerald-500 text-white text-sm rounded-xl hover:bg-emerald-600 disabled:opacity-40 font-medium"
-    >
-      Preview & Send →
-    </button>
-  </StepCard>
-)}
+          </StepCard>
+        )}
 
         {/* Step 4: Review & Send */}
         {step >= 4 && (
           <StepCard number={4} title="Review & Send" active>
             <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 space-y-3 mb-4">
-              <ReviewRow label="Campaign" value={campaignName} />
-              <ReviewRow label="Template" value={templateName} />
+              <ReviewRow label="Campaign"   value={campaignName} />
+              <ReviewRow label="Template"   value={templateName} />
               <ReviewRow label="Recipients" value={`${filteredContacts.length} contacts`} />
-              <ReviewRow label="Schedule" value={scheduledAt ? new Date(scheduledAt).toLocaleString() : 'Send immediately'} />
-              {templateBody && (
+              <ReviewRow label="Schedule"   value={scheduledAt ? new Date(scheduledAt).toLocaleString() : 'Send immediately'} />
+
+              {/* Variable mapping summary */}
+              {templateVariables.length > 0 && (
                 <div>
-                  <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Message Preview</p>
-                  <div className="bg-emerald-500 text-white text-xs p-3 rounded-xl rounded-br-sm max-w-xs">
-                    {templateBody.replace('{{1}}', filteredContacts[0]?.name || 'Customer')}
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Variable Mapping</p>
+                  {templateVariables.map((v) => (
+                    <p key={v} className="text-xs text-gray-600 dark:text-gray-400">
+                      <span className="font-mono bg-gray-200 dark:bg-gray-700 px-1 rounded">{v}</span>
+                      {' → '}
+                      <span className="font-medium">{variableMapping[v] || '(not mapped)'}</span>
+                    </p>
+                  ))}
+                </div>
+              )}
+
+              {/* Preview */}
+              {previewText && (
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Message Preview (first contact)</p>
+                  <div className="bg-emerald-500 text-white text-xs p-3 rounded-xl rounded-br-sm max-w-xs whitespace-pre-wrap leading-relaxed">
+                    {previewText}
                   </div>
                 </div>
               )}
@@ -562,20 +564,16 @@ useEffect(() => {
             <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/20 rounded-xl mb-4">
               <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
               <p className="text-xs text-amber-700 dark:text-amber-400">
-                This will send {filteredContacts.length} WhatsApp messages using your registered business number. Make sure your template is approved by Meta.
+                This will send {filteredContacts.length} WhatsApp messages. Make sure your template is approved by Meta.
               </p>
             </div>
 
-            <button
-              onClick={handleSend}
-              disabled={sending}
-              className="w-full py-3 bg-emerald-500 text-white text-sm rounded-xl hover:bg-emerald-600 disabled:opacity-50 font-semibold flex items-center justify-center gap-2"
-            >
-              {sending ? (
-                <><RefreshCw className="w-4 h-4 animate-spin" /> Creating Campaign...</>
-              ) : (
-                <><Send className="w-4 h-4" /> {scheduledAt ? 'Schedule Campaign' : `Send to ${filteredContacts.length} Contacts`}</>
-              )}
+            <button onClick={handleSend} disabled={sending}
+              className="w-full py-3 bg-emerald-500 text-white text-sm rounded-xl hover:bg-emerald-600 disabled:opacity-50 font-semibold flex items-center justify-center gap-2">
+              {sending
+                ? <><RefreshCw className="w-4 h-4 animate-spin" /> Creating Campaign...</>
+                : <><Send className="w-4 h-4" /> {scheduledAt ? 'Schedule Campaign' : `Send to ${filteredContacts.length} Contacts`}</>
+              }
             </button>
           </StepCard>
         )}
@@ -594,11 +592,12 @@ useEffect(() => {
           </ul>
         </div>
         <div className="bg-white dark:bg-gray-950 rounded-2xl p-4 border border-gray-200 dark:border-gray-800">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">📨 Template Tips</h3>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">📨 Variable Mapping Tips</h3>
           <ul className="space-y-2 text-xs text-gray-600 dark:text-gray-400">
-            <li>✅ Template must be approved in Meta</li>
-            <li>✅ Use exact template name from Meta</li>
-            <li>✅ Variables: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{'{{1}}'}</code> <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{'{{2}}'}</code></li>
+            <li>✅ Map each <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{'{{1}}'}</code> to a column</li>
+            <li>✅ Preview updates live as you map</li>
+            <li>✅ Works with any number of variables</li>
+            <li>✅ Different campaigns can use different mappings</li>
             <li>❌ Cannot use unapproved templates</li>
           </ul>
         </div>
@@ -615,22 +614,14 @@ function CampaignHistory({ campaigns, onRefresh }: { campaigns: Campaign[]; onRe
   const loadContacts = async (id: string) => {
     if (contacts[id]) { setExpanded(expanded === id ? null : id); return }
     const res = await fetch(`/api/campaigns/contacts?campaign_id=${id}`)
-    if (res.ok) {
-      const data = await res.json()
-      setContacts((prev) => ({ ...prev, [id]: data }))
-    }
+    if (res.ok) setContacts((prev) => ({ ...prev, [id]: await res.json() }))
     setExpanded(id)
   }
 
   const exportCampaign = (campaign: Campaign) => {
     const c = contacts[campaign.id] || []
     if (!c.length) return
-    const csv = Papa.unparse(c.map((contact) => ({
-      Phone:  contact.phone,
-      Name:   contact.name,
-      Status: contact.status,
-      Error:  contact.error || '',
-    })))
+    const csv  = Papa.unparse(c.map((x) => ({ Phone: x.phone, Name: x.name, Status: x.status, Error: x.error || '' })))
     const blob = new Blob([csv], { type: 'text/csv' })
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
@@ -650,9 +641,9 @@ function CampaignHistory({ campaigns, onRefresh }: { campaigns: Campaign[]; onRe
   return (
     <div className="space-y-3">
       {campaigns.map((campaign) => {
-        const pct = campaign.total > 0 ? Math.round((campaign.sent / campaign.total) * 100) : 0
-        const deliveryRate = campaign.sent > 0 ? Math.round((campaign.delivered / campaign.sent) * 100) : 0
-        const isExpanded = expanded === campaign.id
+        const pct          = campaign.total > 0 ? Math.round((campaign.sent / campaign.total) * 100) : 0
+        const deliveryRate = campaign.sent  > 0 ? Math.round((campaign.delivered / campaign.sent) * 100) : 0
+        const isExpanded   = expanded === campaign.id
 
         return (
           <div key={campaign.id} className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
@@ -662,8 +653,7 @@ function CampaignHistory({ campaigns, onRefresh }: { campaigns: Campaign[]; onRe
                   <div className="flex items-center gap-2 mb-1">
                     <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{campaign.name}</h3>
                     <span className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[campaign.status]}`}>
-                      {STATUS_ICONS[campaign.status]}
-                      {campaign.status}
+                      {STATUS_ICONS[campaign.status]}{campaign.status}
                     </span>
                   </div>
                   <p className="text-xs text-gray-400">
@@ -672,50 +662,40 @@ function CampaignHistory({ campaigns, onRefresh }: { campaigns: Campaign[]; onRe
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => { loadContacts(campaign.id); exportCampaign(campaign) }}
-                    className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
-                    title="Export report"
-                  >
+                  <button onClick={() => { loadContacts(campaign.id); exportCampaign(campaign) }}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30" title="Export">
                     <Download className="w-4 h-4" />
                   </button>
-                  <button
-                    onClick={() => loadContacts(campaign.id)}
-                    className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30"
-                    title="View contacts"
-                  >
+                  <button onClick={() => loadContacts(campaign.id)}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30" title="View contacts">
                     <Eye className="w-4 h-4" />
                   </button>
                 </div>
               </div>
 
-              {/* Progress bar */}
               <div className="mb-2">
                 <div className="flex justify-between text-[10px] text-gray-400 mb-1">
-                  <span>Progress</span>
-                  <span>{pct}% ({campaign.sent}/{campaign.total})</span>
+                  <span>Progress</span><span>{pct}% ({campaign.sent}/{campaign.total})</span>
                 </div>
                 <div className="h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                   <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
                 </div>
               </div>
 
-              {/* Stats row */}
               <div className="grid grid-cols-4 gap-2 mt-3">
-                <MiniStat label="Total" value={campaign.total} color="text-gray-700 dark:text-gray-300" />
-                <MiniStat label="Sent" value={campaign.sent} color="text-blue-600" />
+                <MiniStat label="Total"     value={campaign.total}     color="text-gray-700 dark:text-gray-300" />
+                <MiniStat label="Sent"      value={campaign.sent}      color="text-blue-600" />
                 <MiniStat label="Delivered" value={campaign.delivered} color="text-green-600" />
-                <MiniStat label="Failed" value={campaign.failed} color="text-red-500" />
+                <MiniStat label="Failed"    value={campaign.failed}    color="text-red-500" />
               </div>
 
               {campaign.sent > 0 && (
-                <div className="mt-2 text-[10px] text-gray-400">
+                <p className="mt-2 text-[10px] text-gray-400">
                   Delivery rate: <span className="text-green-600 font-medium">{deliveryRate}%</span>
-                </div>
+                </p>
               )}
             </div>
 
-            {/* Expanded contact list */}
             {isExpanded && contacts[campaign.id] && (
               <div className="border-t border-gray-100 dark:border-gray-800">
                 <div className="max-h-64 overflow-y-auto">
@@ -761,13 +741,9 @@ function StepCard({ number, title, active, complete, children }: {
   number: number; title: string; active: boolean; complete?: boolean; children: React.ReactNode
 }) {
   return (
-    <div className={`bg-white dark:bg-gray-950 rounded-2xl border p-5 transition-all ${
-      active ? 'border-emerald-200 dark:border-emerald-900 shadow-sm' : 'border-gray-200 dark:border-gray-800 opacity-50'
-    }`}>
+    <div className={`bg-white dark:bg-gray-950 rounded-2xl border p-5 transition-all ${active ? 'border-emerald-200 dark:border-emerald-900 shadow-sm' : 'border-gray-200 dark:border-gray-800 opacity-50'}`}>
       <div className="flex items-center gap-3 mb-4">
-        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-          complete ? 'bg-emerald-500 text-white' : active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'
-        }`}>
+        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${complete ? 'bg-emerald-500 text-white' : active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
           {complete ? '✓' : number}
         </div>
         <h2 className="text-sm font-semibold text-gray-900 dark:text-white">{title}</h2>
